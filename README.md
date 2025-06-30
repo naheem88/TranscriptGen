@@ -1,10 +1,10 @@
-# Parliamentary Audio Transcription Tool
+# Audio Transcription Tool
 
-A Python script that transcribes parliamentary audio/video files using Google's Gemini 2.0 Flash API. Handles long recordings by splitting them into chunks and preserving context between segments.
+A Python script that transcribes video files using Google's Gemini 2.0 Flash API. Handles long recordings by splitting them into chunks and preserving context between segments.
 
 ## What it does
 
-- Extracts audio from video files (MP4, AVI, MOV, etc.)
+- Extracts audio from video files 
 - Splits long audio into manageable chunks with overlap
 - Transcribes each chunk using Gemini 2.0 Flash
 - Combines transcripts and removes duplicate content
