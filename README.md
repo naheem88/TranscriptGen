@@ -6,7 +6,7 @@ A Python script that transcribes video files using Google's Gemini 2.0 Flash API
 
 - Extracts audio from video files 
 - Splits long audio into manageable chunks with overlap
-- Transcribes each chunk using Gemini 2.0 Flash
+- Transcribes each chunk using Gemini 2.5 Flash
 - Combines transcripts and removes duplicate content
 - Supports parallel processing for faster results
 
