@@ -40,7 +40,6 @@ def clean_transcript(transcript):
     return transcript.strip()
 
 def cleanup_chunk_files(chunk_files):
-    """Clean up temporary chunk files"""
     deleted_count = 0
     for chunk_file in chunk_files:
         try:
@@ -54,19 +53,15 @@ def cleanup_chunk_files(chunk_files):
 def print_statistics(chunk_files, all_transcripts, total_time, output_file):
     successful_chunks = sum(1 for t in all_transcripts if "TRANSCRIPTION FAILED" not in t)
     success_rate = (successful_chunks / len(chunk_files)) * 100
-    full_transcript = "".join(all_transcripts)
     
     print(f"Transcription completed successfully")
     print(f"Output saved to: {output_file}")
     print(f"Statistics:")
-    print(f"   - Total chunks: {len(chunk_files)}")
-    print(f"   - Successful: {successful_chunks}")
-    print(f"   - Failed: {len(chunk_files) - successful_chunks}")
     print(f"   - Success rate: {success_rate:.1f}%")
     print(f"   - Total time: {total_time/60:.1f} minutes")
-    print(f"   - Average time per chunk: {total_time/len(chunk_files):.1f} seconds")
 
 def calculate_progress(i, total_chunks, start_time, progress_interval=5):
+    """Calculate and print progress"""
     if i % progress_interval == 0 or i == total_chunks:
         elapsed = time.time() - start_time
         avg_time = elapsed / i
@@ -77,7 +72,6 @@ def get_file_extension(file_path):
     return os.path.splitext(file_path)[1].lower()
 
 def get_base_name(file_path):
-    """Get base name without extension"""
     return os.path.splitext(os.path.basename(file_path))[0]
 
 def split_audio(input_file, output_dir="chunks", duration=60, overlap=10):
@@ -128,16 +122,14 @@ def encode_audio_file(audio_path):
         audio_data = audio_file.read()
     return base64.b64encode(audio_data).decode('utf-8')
 
-def transcribe_chunk(audio_path, previous_context="", chunk_number=1, total_chunks=1, start_time=0):
-    """Transcribe a single audio chunk using Gemini 2.5 Flash with context preservation"""
-    
-    timestamp = format_timestamp(start_time)
-    print(f"Transcribing {os.path.basename(audio_path)} (chunk {chunk_number}/{total_chunks}) - Starting at {timestamp}...")
+def transcribe_chunk(audio_path, previous_context="", chunk_number=1, total_chunks=1, start_time=0, end_time=0):    
+    time_range = format_time_range(start_time, end_time)
+    print(f"Transcribing {os.path.basename(audio_path)} (chunk {chunk_number}/{total_chunks}) - {time_range}...")
     
     file_size = os.path.getsize(audio_path)
     print(f"File size: {file_size / (1024*1024):.1f} MB")
     
-    model = genai.GenerativeModel('gemini-2.5-flash')
+    model = genai.GenerativeModel('gemini-2.0-flash')
     audio_base64 = encode_audio_file(audio_path)
     
     context_info = ""
@@ -192,9 +184,8 @@ Start directly with the transcription without any introduction or acknowledgment
             transcript = response.text.strip()
             transcript = clean_transcript(transcript)
             
-            # Add timestamp header to the transcript
-            timestamp_header = f"[Timestamp: {timestamp}]\n"
-            transcript = timestamp_header + transcript
+            time_range_header = f"{time_range}\n"
+            transcript = time_range_header + transcript
             
             return transcript
         else:
@@ -203,83 +194,8 @@ Start directly with the transcription without any introduction or acknowledgment
     except Exception as e:
         return ""
 
-def batch_transcribe(audio_file, output_file="full_transcript.txt"):
-    """Complete transcription pipeline with context-aware processing"""
-    
-    print(f"Input file: {audio_file}")
-    print(f"Output file: {output_file}")
-    
-    # Split audio into overlapping chunks
-    chunk_info = split_audio(audio_file, overlap=10)
-    
-    if not chunk_info:
-        print("No chunks created. Exiting.")
-        return
-    
-    # Transcribe chunks with context preservation
-    all_transcripts = []
-    accumulated_context = ""
-    speaker_context = ""
-    start_time = time.time()
-    
-    for i, chunk_data in enumerate(chunk_info, 1):
-        chunk_file = chunk_data['file']
-        chunk_start_time = chunk_data['start_time']
-        
-        # Build speaker context from previous chunks
-        if i > 1:
-            speaker_context = build_speaker_context(all_transcripts[:-1] if all_transcripts else [])
-        
-        # Combine previous text context with speaker context
-        full_context = accumulated_context + speaker_context
-        
-        # Pass context to maintain continuity
-        transcript = transcribe_chunk(
-            chunk_file, 
-            previous_context=full_context,
-            chunk_number=i,
-            total_chunks=len(chunk_info),
-            start_time=chunk_start_time
-        )
-        
-        if transcript:
-            all_transcripts.append(transcript + "\n")
-            # Update context for next chunk 
-            accumulated_context += transcript + "\n"
-            if len(accumulated_context) > 500:
-                lines = accumulated_context.split('\n')
-                accumulated_context = '\n'.join(lines[-5:])  
-        else:
-            all_transcripts.append("[TRANSCRIPTION FAILED]\n")
-        
-        calculate_progress(i, len(chunk_info), start_time, 5)
-    
-    # Combine and save
-    if all_transcripts:
-        # Deduplicate overlapping content
-        deduplicated_transcripts = deduplicate_overlapping_content(all_transcripts, overlap_seconds=10)
-        
-        # Combine final transcripts
-        full_transcript = "".join(deduplicated_transcripts)
-        
-        # Standardize speaker names across the entire transcript
-        full_transcript = standardize_speaker_names(full_transcript)
-        
-        with open(output_file, "w", encoding='utf-8') as f:
-            f.write(full_transcript)
-        
-        chunk_files = [chunk_data['file'] for chunk_data in chunk_info]
-        cleanup_chunk_files(chunk_files)
-        
-        total_time = time.time() - start_time
-        print_statistics(chunk_files, all_transcripts, total_time, output_file)
-        
-    else:
-        print("No transcripts were generated")
 
-def extract_audio_from_video(video_file, output_dir="."):
-    """Extract audio from video file to FLAC format"""
-    
+def extract_audio_from_video(video_file, output_dir="."):    
     if not os.path.exists(video_file):
         return None
     
@@ -288,11 +204,11 @@ def extract_audio_from_video(video_file, output_dir="."):
     
     cmd = [
         "ffmpeg", "-i", video_file,
-        "-vn",  
-        "-acodec", "flac",  
-        "-ar", "16000",  
-        "-ac", "1",  
-        "-y", 
+        "-vn",
+        "-acodec", "flac",
+        "-ar", "16000",
+        "-ac", "1",
+        "-y",
         audio_file
     ]
     
@@ -313,22 +229,19 @@ def deduplicate_overlapping_content(transcripts, overlap_seconds=10):
     for i, transcript in enumerate(transcripts):
         lines = transcript.strip().split('\n')
         
-        # Extract timestamp header 
-        timestamp_header = ""
+        time_range_header = ""
         content_lines = lines
-        if lines and lines[0].startswith('[Timestamp:'):
-            timestamp_header = lines[0]
+        if lines and lines[0].startswith('[') and ' - ' in lines[0]:
+            time_range_header = lines[0]
             content_lines = lines[1:]
         
         if i == 0:
             cleaned_transcripts.append(transcript)
-            # Extract last few words for next comparison
             if content_lines:
                 last_line = content_lines[-1]
                 words = last_line.split()
                 previous_end = ' '.join(words[-10:]) if len(words) >= 10 else last_line
         else:
-            # Check for overlap with previous chunk
             current_start = ""
             if content_lines:
                 first_line = content_lines[0]
@@ -348,9 +261,8 @@ def deduplicate_overlapping_content(transcripts, overlap_seconds=10):
                         if overlap_found:
                             cleaned_lines.append(line)
                     if cleaned_lines:
-                        # Reconstruct with timestamp header
-                        if timestamp_header:
-                            cleaned_transcript = timestamp_header + '\n' + '\n'.join(cleaned_lines)
+                        if time_range_header:
+                            cleaned_transcript = time_range_header + '\n' + '\n'.join(cleaned_lines)
                         else:
                             cleaned_transcript = '\n'.join(cleaned_lines)
                         cleaned_transcripts.append(cleaned_transcript)
@@ -361,13 +273,11 @@ def deduplicate_overlapping_content(transcripts, overlap_seconds=10):
             else:
                 cleaned_transcripts.append(transcript)
             
-            # Update previous_end for next iteration
             if cleaned_transcripts:
                 last_transcript = cleaned_transcripts[-1]
                 transcript_lines = last_transcript.strip().split('\n')
-                # Skip timestamp header when looking for content
                 content_lines = transcript_lines
-                if transcript_lines and transcript_lines[0].startswith('[Timestamp:'):
+                if transcript_lines and transcript_lines[0].startswith('[') and ' - ' in transcript_lines[0]:
                     content_lines = transcript_lines[1:]
                 
                 if content_lines:
@@ -386,45 +296,39 @@ def is_audio_file(file_path):
     return get_file_extension(file_path) in audio_extensions
 
 
-def batch_transcribe_optimized(audio_file, output_file="full_transcript.txt"):    
+def batch_transcribe(audio_file, output_file="full_transcript.txt"):    
     print(f"Input file: {audio_file}")
     print(f"Output file: {output_file}")
     
-    # Split audio into optimized chunks
-    chunk_info = split_audio(audio_file, duration=90, overlap=5)  # Optimized for speed + quality
+    chunk_info = split_audio(audio_file, duration=90, overlap=5)
     
     if not chunk_info:
         print("No chunks created. Exiting.")
         return
     
-    # Step 2: Parallel transcription with context preservation
     start_time = time.time()
     
-    # Create a list to store results in order
     results = [None] * len(chunk_info)
     
     def process_chunk_with_context(chunk_data_info):
         index, chunk_data = chunk_data_info
         chunk_file = chunk_data['file']
         chunk_start_time = chunk_data['start_time']
+        chunk_end_time = chunk_data['start_time'] + chunk_data['duration']
         
-        # Get context from previous chunks if available
         context = ""
         speaker_context = ""
         
         if index > 0 and results[index-1]:
-            # Extract last few lines from previous chunk for context
             prev_transcript = results[index-1]
             lines = prev_transcript.strip().split('\n')
             if lines:
                 context_lines = lines[-3:] if len(lines) >= 3 else lines
                 context = '\n'.join(context_lines)
             
-            # Build speaker context from completed chunks
             completed_transcripts = [r for r in results[:index] if r]
             speaker_context = build_speaker_context(completed_transcripts)
         
-        # Combine contexts
         full_context = context + speaker_context
         
         result = transcribe_chunk(
@@ -432,29 +336,25 @@ def batch_transcribe_optimized(audio_file, output_file="full_transcript.txt"):
             previous_context=full_context,
             chunk_number=index + 1,
             total_chunks=len(chunk_info),
-            start_time=chunk_start_time
+            start_time=chunk_start_time,
+            end_time=chunk_end_time
         )
         return index, result
     
-    # Process chunks in parallel (limited to 3 workers to maintain quality)
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-        # Submit all tasks
         future_to_chunk = {
             executor.submit(process_chunk_with_context, (i, chunk_data)): i 
             for i, chunk_data in enumerate(chunk_info)
         }
         
-        # Collect results as they complete
         completed = 0
         for future in concurrent.futures.as_completed(future_to_chunk):
             chunk_index, transcript = future.result()
             results[chunk_index] = transcript
             completed += 1
             
-            # Progress update
             calculate_progress(completed, len(chunk_info), start_time)
     
-    # Step 3: Combine and save
     all_transcripts = []
     for i, transcript in enumerate(results):
         if transcript:
@@ -463,22 +363,18 @@ def batch_transcribe_optimized(audio_file, output_file="full_transcript.txt"):
             all_transcripts.append("[TRANSCRIPTION FAILED]\n")
     
     if all_transcripts:
-        # Deduplicate overlapping content
         deduplicated_transcripts = deduplicate_overlapping_content(all_transcripts, overlap_seconds=8)
         
         full_transcript = "".join(deduplicated_transcripts)
         
-        # Standardize speaker names across the entire transcript
         full_transcript = standardize_speaker_names(full_transcript)
         
         with open(output_file, "w", encoding='utf-8') as f:
             f.write(full_transcript)
         
-        # Clean up
         chunk_files = [chunk_data['file'] for chunk_data in chunk_info]
         cleanup_chunk_files(chunk_files)
         
-        # Statistics
         total_time = time.time() - start_time
         print_statistics(chunk_files, all_transcripts, total_time, output_file)
         
@@ -486,30 +382,24 @@ def batch_transcribe_optimized(audio_file, output_file="full_transcript.txt"):
         print("No transcripts were generated")
 
 def extract_speaker_names(transcript):
-    """Extract speaker names from transcript for consistency across chunks"""
     speaker_names = set()
     lines = transcript.split('\n')
     
     for line in lines:
         line = line.strip()
-        # Skip timestamp headers
-        if line.startswith('[Timestamp:'):
+        if line.startswith('[') and ' - ' in line:
             continue
         if ':' in line:
-            # Extract everything before the first colon as potential speaker name
             speaker_part = line.split(':', 1)[0].strip()
-            # Remove common prefixes and clean up
             speaker_part = speaker_part.replace('[', '').replace(']', '')
             
-            # Skip if it's just a generic speaker label
             if not any(generic in speaker_part.lower() for generic in ['speaker', 'unknown']):
-                if len(speaker_part) > 0 and len(speaker_part) < 50:  # Reasonable name length
+                if len(speaker_part) > 0 and len(speaker_part) < 50:
                     speaker_names.add(speaker_part)
     
     return list(speaker_names)
 
 def build_speaker_context(previous_transcripts):
-    """Build speaker context from previous transcripts to maintain consistency"""
     all_speakers = set()
     for transcript in previous_transcripts:
         speakers = extract_speaker_names(transcript)
@@ -523,25 +413,20 @@ def build_speaker_context(previous_transcripts):
     return ""
 
 def standardize_speaker_names(transcript):
-    """Standardize speaker names across the entire transcript while preserving timestamps"""
     lines = transcript.split('\n')
     speaker_mapping = {}
     
-    # First pass: identify all unique speaker variations
     speaker_variations = {}
     for line in lines:
         line = line.strip()
-        # Skip timestamp headers
-        if line.startswith('[Timestamp:'):
+        if line.startswith('[') and ' - ' in line:
             continue
         if ':' in line:
             speaker_part = line.split(':', 1)[0].strip()
             speaker_part = speaker_part.replace('[', '').replace(']', '')
             
-            # Group similar speaker names (handle variations like "Mr. Smith" vs "Smith")
             base_name = speaker_part.lower()
             
-            # Remove titles and prefixes for comparison
             base_name = base_name.replace('mr.', '').replace('ms.', '').replace('mrs.', '')
             base_name = base_name.replace('dr.', '').replace('prof.', '').replace('minister', '')
             base_name = base_name.replace('chairman', '').replace('chairwoman', '').strip()
@@ -551,19 +436,15 @@ def standardize_speaker_names(transcript):
                     speaker_variations[base_name] = []
                 speaker_variations[base_name].append(speaker_part)
     
-    # Second pass: create mapping to most complete/formal version
     for base_name, variations in speaker_variations.items():
         if len(variations) > 1:
-            # Choose the most complete version (usually the longest)
             best_version = max(variations, key=len)
             for variation in variations:
                 speaker_mapping[variation] = best_version
     
-    # Third pass: apply standardization
     standardized_lines = []
     for line in lines:
-        # Preserve timestamp headers as-is
-        if line.strip().startswith('[Timestamp:'):
+        if line.strip().startswith('[') and ' - ' in line.strip():
             standardized_lines.append(line)
         elif ':' in line:
             speaker_part, content = line.split(':', 1)
@@ -579,7 +460,6 @@ def standardize_speaker_names(transcript):
     return '\n'.join(standardized_lines)
 
 def format_timestamp(seconds):
-    """Format seconds into HH:MM:SS format"""
     hours = int(seconds // 3600)
     minutes = int((seconds % 3600) // 60)
     seconds = int(seconds % 60)
@@ -588,6 +468,11 @@ def format_timestamp(seconds):
         return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
     else:
         return f"{minutes:02d}:{seconds:02d}"
+
+def format_time_range(start_seconds, end_seconds):
+    start_time = format_timestamp(start_seconds)
+    end_time = format_timestamp(end_seconds)
+    return f"[{start_time} - {end_time}]"
 
 def main():
     if len(sys.argv) < 2:
@@ -605,7 +490,6 @@ def main():
     if not os.path.exists(input_file):
         return
     
-    # Determine file type and process accordingly
     if is_video_file(input_file):
         print("Video file detected. Extracting audio first...")
         audio_file = extract_audio_from_video(input_file)
@@ -613,11 +497,11 @@ def main():
             print("Failed to extract audio from video. Exiting.")
             return
         print(f"Using extracted audio: {audio_file}")
-        batch_transcribe_optimized(audio_file, output_file)
+        batch_transcribe(audio_file, output_file)
         
     elif is_audio_file(input_file):
         print("Audio file detected. Processing directly...")
-        batch_transcribe_optimized(input_file, output_file)
+        batch_transcribe(input_file, output_file)
         
     else:
         print(f"Unsupported file format: {input_file}")
