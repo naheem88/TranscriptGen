@@ -33,7 +33,6 @@ UNWANTED_PHRASES = [
 ]
 
 def clean_transcript(transcript):
-    """Remove unwanted phrases from transcript"""
     for phrase in UNWANTED_PHRASES:
         if transcript.startswith(phrase):
             transcript = transcript[len(phrase):].strip()
@@ -53,7 +52,6 @@ def cleanup_chunk_files(chunk_files):
     return deleted_count
 
 def print_statistics(chunk_files, all_transcripts, total_time, output_file):
-    """Print transcription statistics"""
     successful_chunks = sum(1 for t in all_transcripts if "TRANSCRIPTION FAILED" not in t)
     success_rate = (successful_chunks / len(chunk_files)) * 100
     full_transcript = "".join(all_transcripts)
@@ -69,7 +67,6 @@ def print_statistics(chunk_files, all_transcripts, total_time, output_file):
     print(f"   - Average time per chunk: {total_time/len(chunk_files):.1f} seconds")
 
 def calculate_progress(i, total_chunks, start_time, progress_interval=5):
-    """Calculate and print progress"""
     if i % progress_interval == 0 or i == total_chunks:
         elapsed = time.time() - start_time
         avg_time = elapsed / i
@@ -77,7 +74,6 @@ def calculate_progress(i, total_chunks, start_time, progress_interval=5):
         print(f"Progress: {i}/{total_chunks} ({i/total_chunks*100:.1f}%) - Est. remaining: {remaining/60:.1f} min")
 
 def get_file_extension(file_path):
-    """Get file extension in lowercase"""
     return os.path.splitext(file_path)[1].lower()
 
 def get_base_name(file_path):
@@ -85,7 +81,6 @@ def get_base_name(file_path):
     return os.path.splitext(os.path.basename(file_path))[0]
 
 def split_audio(input_file, output_dir="chunks", duration=60, overlap=10):
-    """Split audio file into overlapping chunks for better context preservation"""
     if not os.path.exists(input_file):
         return []
     os.makedirs(output_dir, exist_ok=True)
@@ -100,7 +95,7 @@ def split_audio(input_file, output_dir="chunks", duration=60, overlap=10):
         return []
     effective_duration = duration - overlap
     num_chunks = int(total_duration // effective_duration) + 1
-    chunk_info = []  # Store both file path and timing info
+    chunk_info = []  
     for i in range(num_chunks):
         start_time = i * effective_duration
         if start_time >= total_duration:
@@ -129,7 +124,6 @@ def split_audio(input_file, output_dir="chunks", duration=60, overlap=10):
     return chunk_info
 
 def encode_audio_file(audio_path):
-    """Encode audio file to base64"""
     with open(audio_path, "rb") as audio_file:
         audio_data = audio_file.read()
     return base64.b64encode(audio_data).decode('utf-8')
@@ -215,14 +209,14 @@ def batch_transcribe(audio_file, output_file="full_transcript.txt"):
     print(f"Input file: {audio_file}")
     print(f"Output file: {output_file}")
     
-    # Step 1: Split audio into overlapping chunks
+    # Split audio into overlapping chunks
     chunk_info = split_audio(audio_file, overlap=10)
     
     if not chunk_info:
         print("No chunks created. Exiting.")
         return
     
-    # Step 2: Transcribe chunks with context preservation
+    # Transcribe chunks with context preservation
     all_transcripts = []
     accumulated_context = ""
     speaker_context = ""
@@ -250,36 +244,33 @@ def batch_transcribe(audio_file, output_file="full_transcript.txt"):
         
         if transcript:
             all_transcripts.append(transcript + "\n")
-            # Update context for next chunk (keep last few lines)
+            # Update context for next chunk 
             accumulated_context += transcript + "\n"
-            # Keep only last 500 characters to avoid context overflow
             if len(accumulated_context) > 500:
                 lines = accumulated_context.split('\n')
-                accumulated_context = '\n'.join(lines[-5:])  # Keep last 5 lines
+                accumulated_context = '\n'.join(lines[-5:])  
         else:
             all_transcripts.append("[TRANSCRIPTION FAILED]\n")
         
         calculate_progress(i, len(chunk_info), start_time, 5)
     
-    # Step 3: Combine and save
+    # Combine and save
     if all_transcripts:
-        # Step 3a: Deduplicate overlapping content
+        # Deduplicate overlapping content
         deduplicated_transcripts = deduplicate_overlapping_content(all_transcripts, overlap_seconds=10)
         
-        # Step 3b: Combine final transcripts
+        # Combine final transcripts
         full_transcript = "".join(deduplicated_transcripts)
         
-        # Step 3c: Standardize speaker names across the entire transcript
+        # Standardize speaker names across the entire transcript
         full_transcript = standardize_speaker_names(full_transcript)
         
         with open(output_file, "w", encoding='utf-8') as f:
             f.write(full_transcript)
         
-        # Step 4: Clean up chunk files
         chunk_files = [chunk_data['file'] for chunk_data in chunk_info]
         cleanup_chunk_files(chunk_files)
         
-        # Statistics
         total_time = time.time() - start_time
         print_statistics(chunk_files, all_transcripts, total_time, output_file)
         
@@ -292,17 +283,16 @@ def extract_audio_from_video(video_file, output_dir="."):
     if not os.path.exists(video_file):
         return None
     
-    # Generate output filename
     base_name = get_base_name(video_file)
     audio_file = os.path.join(output_dir, f"{base_name}_audio.flac")
     
     cmd = [
         "ffmpeg", "-i", video_file,
-        "-vn",  # No video
-        "-acodec", "flac",  # FLAC audio codec
-        "-ar", "16000",  # 16kHz sample rate (good for speech)
-        "-ac", "1",  # Mono audio
-        "-y",  # Overwrite output file
+        "-vn",  
+        "-acodec", "flac",  
+        "-ar", "16000",  
+        "-ac", "1",  
+        "-y", 
         audio_file
     ]
     
@@ -313,9 +303,7 @@ def extract_audio_from_video(video_file, output_dir="."):
     except subprocess.CalledProcessError as e:
         return None
 
-def deduplicate_overlapping_content(transcripts, overlap_seconds=10):
-    """Remove duplicate content from overlapping chunks while preserving timestamps"""
-    
+def deduplicate_overlapping_content(transcripts, overlap_seconds=10):    
     if len(transcripts) <= 1:
         return transcripts
     
@@ -325,7 +313,7 @@ def deduplicate_overlapping_content(transcripts, overlap_seconds=10):
     for i, transcript in enumerate(transcripts):
         lines = transcript.strip().split('\n')
         
-        # Extract timestamp header if present
+        # Extract timestamp header 
         timestamp_header = ""
         content_lines = lines
         if lines and lines[0].startswith('[Timestamp:'):
@@ -333,7 +321,6 @@ def deduplicate_overlapping_content(transcripts, overlap_seconds=10):
             content_lines = lines[1:]
         
         if i == 0:
-            # First chunk - keep as is
             cleaned_transcripts.append(transcript)
             # Extract last few words for next comparison
             if content_lines:
@@ -391,23 +378,19 @@ def deduplicate_overlapping_content(transcripts, overlap_seconds=10):
     return cleaned_transcripts
 
 def is_video_file(file_path):
-    """Check if file is a video file based on extension"""
     video_extensions = {'.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm', '.m4v', '.3gp', '.ogv'}
     return get_file_extension(file_path) in video_extensions
 
 def is_audio_file(file_path):
-    """Check if file is an audio file based on extension"""
     audio_extensions = {'.flac', '.mp3', '.wav', '.m4a', '.aac', '.ogg', '.wma', '.opus'}
     return get_file_extension(file_path) in audio_extensions
 
 
-def batch_transcribe_optimized(audio_file, output_file="full_transcript.txt"):
-    """Optimized transcription pipeline with quality and speed"""
-    
+def batch_transcribe_optimized(audio_file, output_file="full_transcript.txt"):    
     print(f"Input file: {audio_file}")
     print(f"Output file: {output_file}")
     
-    # Step 1: Split audio into optimized chunks
+    # Split audio into optimized chunks
     chunk_info = split_audio(audio_file, duration=90, overlap=5)  # Optimized for speed + quality
     
     if not chunk_info:
